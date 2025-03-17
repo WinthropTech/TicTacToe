@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Tic Tac Toe</title>
+  <link href="https://fonts.googleapis.com/css?family=Roboto:400,700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Roboto', sans-serif;
+      background-color: #f0f4f8;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    h1 {
+      color: #333;
+      margin-top: 20px;
+    }
+    .board {
+      display: grid;
+      grid-template-columns: repeat(3, 120px);
+      grid-gap: 10px;
+      margin: 20px;
+      padding: 10px;
+      background: #fff;
+      border: 2px solid #ccc;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .cell {
+      width: 120px;
+      height: 120px;
+      background: #e9ecef;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 3em;
+      color: #333;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .cell:hover {
+      background: #dfe4ea;
+    }
+    #controls {
+      margin: 20px;
+    }
+    button {
+      background-color: #007bff;
+      color: #fff;
+      border: none;
+      padding: 10px 20px;
+      margin: 0 10px;
+      border-radius: 4px;
+      font-size: 1em;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+    #message {
+      font-size: 1.5em;
+      margin: 10px;
+      color: #555;
+    }
+    /* Overlay for start screen */
+    .overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+    .start-modal {
+      background: #fff;
+      padding: 40px;
+      border-radius: 8px;
+      text-align: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
+    .start-modal h2 {
+      margin-bottom: 20px;
+      color: #333;
+    }
+    .button-group {
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+    }
+    .start-button {
+      padding: 10px 20px;
+      font-size: 1em;
+      background-color: #28a745;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+    .start-button:hover {
+      background-color: #218838;
+    }
+  </style>
+</head>
+<body>
+  <h1>Tic Tac Toe</h1>
+  
+  <!-- Overlay Start Screen -->
+  <div id="startScreen" class="overlay">
+    <div class="start-modal">
+      <h2>Who goes first?</h2>
+      <div class="button-group">
+        <button class="start-button" data-first="human">Human</button>
+        <button class="start-button" data-first="ai">AI</button>
+      </div>
+    </div>
+  </div>
+  
+  <div id="message"></div>
+  <div class="board" id="board">
+    {% for i in range(9) %}
+      <div class="cell" data-index="{{ i }}">{{ board[i] }}</div>
+    {% endfor %}
+  </div>
+  
+  <div id="controls">
+    <button id="reset">Reset Game</button>
+    <button id="undo">Undo Move</button>
+  </div>
+  
+  <script>
+    const cells = document.querySelectorAll('.cell');
+    const messageDiv = document.getElementById('message');
+    const resetButton = document.getElementById('reset');
+    const undoButton = document.getElementById('undo');
+    const startScreen = document.getElementById('startScreen');
+    
+    // Add event listeners to cells for moves
+    cells.forEach(cell => {
+      cell.addEventListener('click', async function() {
+        const index = this.getAttribute('data-index');
+        const response = await fetch('/move', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ position: parseInt(index) })
+        });
+        const result = await response.json();
+        if (result.error) {
+          messageDiv.textContent = result.error;
+        } else {
+          updateBoard(result.board);
+          if (result.status === "human_win") {
+            messageDiv.textContent = "You win!";
+          } else if (result.status === "ai_win") {
+            messageDiv.textContent = "AI wins!";
+          } else if (result.status === "draw") {
+            messageDiv.textContent = "It's a draw!";
+          } else {
+            messageDiv.textContent = "";
+          }
+        }
+      });
+    });
+    
+    // Reset button shows the start overlay so user can choose who goes first
+    resetButton.addEventListener('click', () => {
+      startScreen.style.display = 'flex';
+    });
+    
+    // Undo button to revert last move (only one undo allowed)
+    undoButton.addEventListener('click', async function() {
+      const response = await fetch('/undo', { method: 'POST' });
+      const result = await response.json();
+      if (result.error) {
+        messageDiv.textContent = result.error;
+      } else {
+        updateBoard(result.board);
+        messageDiv.textContent = "Last move undone.";
+      }
+    });
+    
+    // Start screen button functionality
+    document.querySelectorAll('.start-button').forEach(button => {
+      button.addEventListener('click', async function() {
+        const first = this.getAttribute('data-first');
+        const response = await fetch('/reset', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ first: first })
+        });
+        const result = await response.json();
+        updateBoard(result.board);
+        messageDiv.textContent = "Game reset! " + (result.first === "ai" ? "AI goes first." : "Your move.");
+        // Hide the start overlay once a selection is made
+        startScreen.style.display = 'none';
+      });
+    });
+    
+    function updateBoard(board) {
+      cells.forEach(cell => {
+        const index = cell.getAttribute('data-index');
+        cell.textContent = board[index];
+      });
+    }
+  </script>
+</body>
+</html>
